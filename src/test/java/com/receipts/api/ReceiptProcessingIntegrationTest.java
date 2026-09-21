@@ -289,6 +289,17 @@ class ReceiptProcessingIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void patch_syntacticallyInvalidJsonBody_returns400() throws Exception {
+        long receiptId = uploadFixture("receipt-clean.txt");
+        Long transactionId = processAndGetTransactionId(receiptId);
+
+        mockMvc.perform(patch("/transactions/{id}/items", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ this is not valid json"))
+                .andExpect(status().isBadRequest());
+    }
+
     private List<Long> readLineItemIds(Long transactionId) throws Exception {
         MvcResult result = mockMvc.perform(get("/transactions/{id}", transactionId))
                 .andExpect(status().isOk())

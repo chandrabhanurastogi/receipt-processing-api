@@ -6,7 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
@@ -34,9 +33,6 @@ public class Receipt {
     @Lob
     @Column(name = "raw_ocr_text")
     private String rawOcrText;
-
-    @OneToOne(mappedBy = "receipt", fetch = jakarta.persistence.FetchType.LAZY)
-    private Transaction transaction;
 
     protected Receipt() {
         // JPA
@@ -75,9 +71,5 @@ public class Receipt {
 
     public void setRawOcrText(String rawOcrText) {
         this.rawOcrText = rawOcrText;
-    }
-
-    public Transaction getTransaction() {
-        return transaction;
     }
 }

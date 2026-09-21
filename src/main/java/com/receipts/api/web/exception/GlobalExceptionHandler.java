@@ -4,9 +4,11 @@ import com.receipts.api.dto.response.ErrorResponse;
 import com.receipts.api.dto.response.ReconciliationConflictResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.math.BigDecimal;
 
@@ -56,14 +58,15 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(ex.getMessage()));
     }
 
-    /**
-     * Endpoints whose business logic is not implemented yet at this project
-     * stage (processing/itemize/PATCH flow) report 501 instead of an
-     * uncontrolled 500 until the processing-flow stage lands.
-     */
-    @ExceptionHandler(UnsupportedOperationException.class)
-    public ResponseEntity<ErrorResponse> handleNotImplemented(UnsupportedOperationException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                .body(new ErrorResponse(ex.getMessage()));
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("Malformed request body"));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ErrorResponse("Uploaded file exceeds the maximum allowed size"));
     }
 }
