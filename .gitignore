@@ -1,0 +1,9 @@
+target/
+data/
+*.class
+.DS_Store
+.idea/
+*.iml
+.vscode/
+__MACOSX/
+prompts/
