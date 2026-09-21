@@ -6,6 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record ItemsPatchRequest(
-        @NotNull @Valid List<ItemRequest> items
+        @NotNull List<@Valid ItemRequest> items
 ) {
 }

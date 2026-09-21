@@ -8,7 +8,7 @@ silently forcing the numbers to match.
 ## Tech stack
 
 - Java 21
-- Spring Boot 3.3 (Spring Web, Spring Data JPA, Validation)
+- Spring Boot 4.1 (Spring Web, Spring Data JPA, Validation)
 - Maven (with wrapper — no local Maven install required)
 - H2 (in-memory)
 - JUnit 5 + AssertJ + MockMvc
@@ -36,13 +36,12 @@ Multipart upload. Returns the new receipt's ID.
 
 ```bash
 curl -F "file=@fixtures/task-a/receipt-clean.txt" http://localhost:8080/receipts
-# -> {"receiptId":1}
 ```
 
 ### `POST /receipts/{id}/process` — run OCR + extraction, create/update the transaction
 
 ```bash
-curl -X POST http://localhost:8080/receipts/1/process
+curl -X POST http://localhost:8080/receipts/1/process | jq
 ```
 
 Returns the full transaction (merchant, date, currency, grand total, taxes, line items,
@@ -52,7 +51,7 @@ Returns the full transaction (merchant, date, currency, grand total, taxes, line
 ### `GET /transactions/{id}` — retrieve a transaction
 
 ```bash
-curl http://localhost:8080/transactions/1
+curl http://localhost:8080/transactions/1 | jq
 ```
 
 ```json
@@ -78,7 +77,7 @@ OCR again, does not require re-uploading the receipt, and does not touch merchan
 grand total/taxes/transaction ID.
 
 ```bash
-curl -X POST http://localhost:8080/transactions/1/itemize
+curl -X POST http://localhost:8080/transactions/1/itemize | jq
 ```
 
 ### `PATCH /transactions/{id}/items` — user override (edit / merge / split)
@@ -95,7 +94,7 @@ curl -X PATCH http://localhost:8080/transactions/1/items \
           { "description": "Sandwich (half)", "amount": "4.45" },
           { "description": "Mineral water", "amount": "2.60" }
         ]
-      }'
+      }' | jq
 ```
 
 If the proposed items don't reconcile with the transaction's total and stored taxes, this returns

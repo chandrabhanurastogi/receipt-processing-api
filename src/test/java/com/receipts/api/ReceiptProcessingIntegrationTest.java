@@ -1,17 +1,18 @@
 package com.receipts.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.receipts.api.domain.Transaction;
 import com.receipts.api.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -130,7 +131,7 @@ class ReceiptProcessingIntegrationTest {
         long receiptId = readReceiptId(uploadResult);
 
         mockMvc.perform(post("/receipts/{id}/process", receiptId))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
     }
 
     @Test
@@ -305,7 +306,7 @@ class ReceiptProcessingIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
-        return json.get("lineItems").findValuesAsText("id").stream().map(Long::valueOf).toList();
+        return json.get("lineItems").findValuesAsString("id").stream().map(Long::valueOf).toList();
     }
 
     private long uploadFixture(String filename) throws Exception {
