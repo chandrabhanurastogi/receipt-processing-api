@@ -22,6 +22,10 @@ silently forcing the numbers to match.
 The API starts on `http://localhost:8080`. No environment variables, external services, or API
 keys are required (see [OCR](#ocr) below).
 
+The H2 console is available at `http://localhost:8080/h2-console` (JDBC URL
+`jdbc:h2:mem:receiptsdb`, user `sa`, empty password) for inspecting the in-memory database during
+local development.
+
 ## Test
 
 ```bash
@@ -119,6 +123,9 @@ curl -i -X PATCH http://localhost:8080/transactions/1/items \
 ```
 
 ### `GET /health`
+
+Checks real database connectivity (not a hardcoded response) — `200 {"status":"UP"}` if the
+database is reachable, `503 {"status":"DOWN"}` otherwise.
 
 ```bash
 curl http://localhost:8080/health

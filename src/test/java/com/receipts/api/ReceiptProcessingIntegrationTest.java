@@ -143,6 +143,37 @@ class ReceiptProcessingIntegrationTest {
     }
 
     @Test
+    void nonMultipartUpload_returns400InsteadOf500() throws Exception {
+        // POST /receipts with no multipart body at all (no boundary/content-type)
+        // used to surface as an uncaught MultipartException -> 500.
+        mockMvc.perform(post("/receipts"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void nonNumericTransactionId_returns400WithoutLeakingRawExceptionMessage() throws Exception {
+        // A raw NumberFormatException from @PathVariable Long conversion used
+        // to leak straight through (e.g. {"message":"For input string: \"abc\""}).
+        mockMvc.perform(get("/transactions/{id}", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Malformed request: invalid numeric identifier"));
+    }
+
+    @Test
+    void nonNumericReceiptId_returns400OnProcess() throws Exception {
+        mockMvc.perform(post("/receipts/{id}/process", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Malformed request: invalid numeric identifier"));
+    }
+
+    @Test
+    void health_reportsUpAgainstTheRealDatabase() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
     void reItemize_replacesLineItemsButPreservesTransactionAndReceipt() throws Exception {
         long receiptId = uploadFixture("receipt-clean.txt");
         Long transactionId = processAndGetTransactionId(receiptId);
