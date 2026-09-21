@@ -30,9 +30,9 @@ public class ReceiptService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file must not be empty");
         }
+        String originalFilename = sanitizeFilename(file.getOriginalFilename());
         try {
             Files.createDirectories(storageDirectory);
-            String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
             String storedFilename = UUID.randomUUID() + "-" + originalFilename;
             Path destination = storageDirectory.resolve(storedFilename);
             file.transferTo(destination);
@@ -50,12 +50,14 @@ public class ReceiptService {
     }
 
     /**
-     * OCR + extraction + transaction/tax/line-item creation and reconciliation.
-     * Implemented in the processing-flow stage; deliberately not implemented
-     * here as this stage only establishes the project skeleton.
+     * Strips any directory components from the client-supplied filename so a
+     * value like "../../etc/passwd" can never influence the storage path -
+     * only the base name is kept, and the actual on-disk name is further
+     * prefixed with a random UUID.
      */
-    public Receipt process(Long receiptId) {
-        findByIdOrThrow(receiptId);
-        throw new UnsupportedOperationException("Receipt processing is not implemented yet");
+    private String sanitizeFilename(String originalFilename) {
+        String name = originalFilename != null ? originalFilename : "upload";
+        name = Path.of(name).getFileName().toString();
+        return name.isBlank() ? "upload" : name;
     }
 }

@@ -3,6 +3,7 @@ package com.receipts.api.controller;
 import com.receipts.api.domain.Receipt;
 import com.receipts.api.dto.response.ReceiptUploadResponse;
 import com.receipts.api.dto.response.TransactionResponse;
+import com.receipts.api.service.ReceiptProcessingService;
 import com.receipts.api.service.ReceiptService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,9 +19,11 @@ import org.springframework.web.multipart.MultipartFile;
 public class ReceiptController {
 
     private final ReceiptService receiptService;
+    private final ReceiptProcessingService receiptProcessingService;
 
-    public ReceiptController(ReceiptService receiptService) {
+    public ReceiptController(ReceiptService receiptService, ReceiptProcessingService receiptProcessingService) {
         this.receiptService = receiptService;
+        this.receiptProcessingService = receiptProcessingService;
     }
 
     @PostMapping
@@ -32,8 +35,6 @@ public class ReceiptController {
 
     @PostMapping("/{id}/process")
     public ResponseEntity<TransactionResponse> process(@PathVariable Long id) {
-        receiptService.process(id);
-        // Processing-flow stage will return the resulting TransactionResponse here.
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(receiptProcessingService.process(id));
     }
 }
