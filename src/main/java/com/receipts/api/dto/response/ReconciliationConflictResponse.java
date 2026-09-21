@@ -3,9 +3,12 @@ package com.receipts.api.dto.response;
 import java.math.BigDecimal;
 
 public record ReconciliationConflictResponse(
+        String error,
         String message,
-        BigDecimal proposedItemsTotal,
+        BigDecimal expectedTotal,
+        BigDecimal itemsTotal,
         BigDecimal taxTotal,
-        BigDecimal expectedGrandTotal
+        BigDecimal calculatedTotal,
+        BigDecimal difference
 ) {
 }

@@ -8,6 +8,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.math.BigDecimal;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -19,12 +21,21 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ReconciliationConflictException.class)
     public ResponseEntity<ReconciliationConflictResponse> handleConflict(ReconciliationConflictException ex) {
+        BigDecimal itemsTotal = ex.getProposedItemsTotal();
+        BigDecimal taxTotal = ex.getTaxTotal();
+        BigDecimal expectedTotal = ex.getExpectedGrandTotal();
+        BigDecimal calculatedTotal = itemsTotal.add(taxTotal);
+        BigDecimal difference = expectedTotal.subtract(calculatedTotal);
+
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ReconciliationConflictResponse(
+                        "RECONCILIATION_CONFLICT",
                         ex.getMessage(),
-                        ex.getProposedItemsTotal(),
-                        ex.getTaxTotal(),
-                        ex.getExpectedGrandTotal()));
+                        expectedTotal,
+                        itemsTotal,
+                        taxTotal,
+                        calculatedTotal,
+                        difference));
     }
 
     @ExceptionHandler(ExtractionFailedException.class)

@@ -6,6 +6,7 @@ import com.receipts.api.domain.Transaction;
 import com.receipts.api.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockMultipartFile;
@@ -19,7 +20,10 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -53,16 +57,16 @@ class ReceiptProcessingIntegrationTest {
                 .andExpect(jsonPath("$.currency").value("EUR"))
                 .andExpect(jsonPath("$.grandTotal").value(17.85))
                 .andExpect(jsonPath("$.itemizeStatus").value("COMPLETE"))
-                .andExpect(jsonPath("$.taxes", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.taxes", hasSize(1)))
                 .andExpect(jsonPath("$.taxes[0].name").value("VAT"))
                 .andExpect(jsonPath("$.taxes[0].amount").value(2.85))
-                .andExpect(jsonPath("$.lineItems", org.hamcrest.Matchers.hasSize(3)))
+                .andExpect(jsonPath("$.lineItems", hasSize(3)))
                 .andExpect(jsonPath("$.lineItems[0].description").value("Espresso"))
                 .andExpect(jsonPath("$.lineItems[0].amount").value(3.50));
 
         // GET must reflect the same persisted state.
         Long transactionId = processAndGetTransactionId(receiptId);
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/transactions/{id}", transactionId))
+        mockMvc.perform(get("/transactions/{id}", transactionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.receiptId").value(receiptId))
                 .andExpect(jsonPath("$.itemizeStatus").value("COMPLETE"));
@@ -77,7 +81,7 @@ class ReceiptProcessingIntegrationTest {
                 .andExpect(jsonPath("$.merchant").value("Berlin Taxi GmbH"))
                 .andExpect(jsonPath("$.grandTotal").value(24.00))
                 .andExpect(jsonPath("$.taxes[0].amount").value(3.83))
-                .andExpect(jsonPath("$.lineItems", org.hamcrest.Matchers.hasSize(0)))
+                .andExpect(jsonPath("$.lineItems", hasSize(0)))
                 .andExpect(jsonPath("$.itemizeStatus").value("NEEDS_REVIEW"));
     }
 
@@ -89,7 +93,7 @@ class ReceiptProcessingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.grandTotal").value(18.50))
                 .andExpect(jsonPath("$.itemizeStatus").value("NEEDS_REVIEW"))
-                .andExpect(jsonPath("$.lineItems", org.hamcrest.Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.lineItems", hasSize(2)))
                 .andExpect(jsonPath("$.lineItems[0].amount").value(4.00))
                 .andExpect(jsonPath("$.lineItems[1].amount").value(6.00));
     }
@@ -135,6 +139,162 @@ class ReceiptProcessingIntegrationTest {
 
         mockMvc.perform(multipart("/receipts").file(emptyFile))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void reItemize_replacesLineItemsButPreservesTransactionAndReceipt() throws Exception {
+        long receiptId = uploadFixture("receipt-clean.txt");
+        Long transactionId = processAndGetTransactionId(receiptId);
+        List<Long> originalItemIds = readLineItemIds(transactionId);
+
+        mockMvc.perform(post("/transactions/{id}/itemize", transactionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(transactionId))
+                .andExpect(jsonPath("$.receiptId").value(receiptId))
+                .andExpect(jsonPath("$.itemizeStatus").value("COMPLETE"))
+                .andExpect(jsonPath("$.lineItems", hasSize(3)))
+                .andExpect(jsonPath("$.lineItems[0].description").value("Espresso"));
+
+        // Line items were replaced (new rows), not left untouched, while the
+        // transaction identity and receipt link stayed exactly the same.
+        List<Long> newItemIds = readLineItemIds(transactionId);
+        assertThat(newItemIds).doesNotContainAnyElementsOf(originalItemIds);
+
+        List<Transaction> forReceipt = transactionRepository.findAll().stream()
+                .filter(t -> t.getReceipt().getId().equals(receiptId))
+                .toList();
+        assertThat(forReceipt).hasSize(1);
+        assertThat(forReceipt.get(0).getId()).isEqualTo(transactionId);
+    }
+
+    @Test
+    void reItemize_unknownTransaction_returns404() throws Exception {
+        mockMvc.perform(post("/transactions/{id}/itemize", 999_999))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void successfulPatch_splitReconciles_preservesTotalAndTaxes() throws Exception {
+        long receiptId = uploadFixture("receipt-clean.txt");
+        Long transactionId = processAndGetTransactionId(receiptId);
+
+        // Split "Sandwich" (8.90) into two lines that still sum to 15.00 net,
+        // matching gold: 3.50 + 4.45 + 4.45 + 2.60 = 15.00, + VAT 2.85 = 17.85.
+        String body = """
+                {
+                  "items": [
+                    { "description": "Espresso", "amount": "3.50" },
+                    { "description": "Sandwich (half)", "amount": "4.45" },
+                    { "description": "Sandwich (half)", "amount": "4.45" },
+                    { "description": "Mineral water", "amount": "2.60" }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(patch("/transactions/{id}/items", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grandTotal").value(17.85))
+                .andExpect(jsonPath("$.itemizeStatus").value("COMPLETE"))
+                .andExpect(jsonPath("$.lineItems", hasSize(4)))
+                .andExpect(jsonPath("$.taxes", hasSize(1)))
+                .andExpect(jsonPath("$.taxes[0].amount").value(2.85));
+    }
+
+    @Test
+    void successfulPatch_toleratesScaleDifferencesInProposedAmounts() throws Exception {
+        long receiptId = uploadFixture("receipt-clean.txt");
+        Long transactionId = processAndGetTransactionId(receiptId);
+
+        // "3.5" (scale 1) must still be treated as equal to 3.50 (scale 2):
+        // BigDecimal("3.5").equals(BigDecimal("3.50")) is false, but
+        // compareTo() based reconciliation must accept it.
+        String body = """
+                {
+                  "items": [
+                    { "description": "Espresso", "amount": "3.5" },
+                    { "description": "Sandwich", "amount": "8.9" },
+                    { "description": "Mineral water", "amount": "2.6" }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(patch("/transactions/{id}/items", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.itemizeStatus").value("COMPLETE"));
+    }
+
+    @Test
+    void failedPatch_returns409WithMismatchDetailsAndPreservesExistingState() throws Exception {
+        long receiptId = uploadFixture("receipt-clean.txt");
+        Long transactionId = processAndGetTransactionId(receiptId);
+        List<Long> originalItemIds = readLineItemIds(transactionId);
+
+        String body = """
+                {
+                  "items": [
+                    { "description": "Made up item", "amount": "1.00" }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(patch("/transactions/{id}/items", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("RECONCILIATION_CONFLICT"))
+                .andExpect(jsonPath("$.expectedTotal").value(17.85))
+                .andExpect(jsonPath("$.itemsTotal").value(1.00))
+                .andExpect(jsonPath("$.taxTotal").value(2.85))
+                .andExpect(jsonPath("$.calculatedTotal").value(3.85))
+                .andExpect(jsonPath("$.difference").value(14.00));
+
+        // Nothing was mutated: same line items, same total, same taxes.
+        mockMvc.perform(get("/transactions/{id}", transactionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grandTotal").value(17.85))
+                .andExpect(jsonPath("$.itemizeStatus").value("COMPLETE"))
+                .andExpect(jsonPath("$.lineItems", hasSize(3)))
+                .andExpect(jsonPath("$.taxes[0].amount").value(2.85));
+        assertThat(readLineItemIds(transactionId)).isEqualTo(originalItemIds);
+    }
+
+    @Test
+    void patch_unknownTransaction_returns404() throws Exception {
+        String body = """
+                { "items": [ { "description": "Espresso", "amount": "3.50" } ] }
+                """;
+
+        mockMvc.perform(patch("/transactions/{id}/items", 999_999)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void patch_malformedRequestMissingAmount_returns400() throws Exception {
+        long receiptId = uploadFixture("receipt-clean.txt");
+        Long transactionId = processAndGetTransactionId(receiptId);
+
+        String body = """
+                { "items": [ { "description": "Espresso" } ] }
+                """;
+
+        mockMvc.perform(patch("/transactions/{id}/items", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    private List<Long> readLineItemIds(Long transactionId) throws Exception {
+        MvcResult result = mockMvc.perform(get("/transactions/{id}", transactionId))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        return json.get("lineItems").findValuesAsText("id").stream().map(Long::valueOf).toList();
     }
 
     private long uploadFixture(String filename) throws Exception {
